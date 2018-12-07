@@ -1,0 +1,29 @@
+{
+  "name": "early-warning-system",
+  "version": "1.0.0",
+  "description": "Early warning system for students",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Deniz Burduroglu",
+  "license": "ISC",
+  "dependencies": {
+    "camunda-external-task-client-js": "^1.1.1",
+    "express": "^4.16.4",
+    "nodemailer": "^4.7.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/slashdeniz/Early-Warning-System.git"
+  },
+  "keywords": [
+    "EWS",
+    "Education",
+    "GPA"
+  ],
+  "bugs": {
+    "url": "https://github.com/slashdeniz/Early-Warning-System/issues"
+  },
+  "homepage": "https://github.com/slashdeniz/Early-Warning-System#readme"
+}
