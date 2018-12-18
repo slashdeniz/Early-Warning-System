@@ -9,6 +9,7 @@
   "author": "Deniz Burduroglu",
   "license": "ISC",
   "dependencies": {
+    "body-parser": "^1.18.3",
     "camunda-external-task-client-js": "^1.1.1",
     "express": "^4.16.4",
     "nodemailer": "^4.7.0"

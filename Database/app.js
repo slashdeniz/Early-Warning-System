@@ -1,3 +1,4 @@
+//Declare const references to libraries
 const Express = require("express");
 const BodyParser = require("body-parser");
 const ObjectId = require("mongodb").ObjectID;
@@ -6,101 +7,158 @@ const request = require("request")
 const CONNECTION_URL = "mongodb+srv://admin:admin@cluster0-fqdfm.mongodb.net/test";
 //const DATABASE_NAME = "example";
 
+//Create express app and set rules
 var app = Express();
 var jsonObjs = [];
 app.use(BodyParser.json());
 app.use(BodyParser.urlencoded({ extended: true }));
+app.listen(4000, function () {});
 
-var database, collection;
+//Camunda task client & global variables to use outside of calls
+const { Client, logger } = require('camunda-external-task-client-js');
+const config = { baseUrl: 'http://localhost:8080/engine-rest', use: logger };
+var students = [];
+var studentIDs = [];
+var reviews = [];
+var reviewObj = {};
+const client = new Client(config);
+//Subscribe as task 'monitor-students' (will poll for activity until terminated)
+client.subscribe('monitor-students', function({ task, taskService }) {
+  console.log("Task Triggered");
+  var promise = new Promise(resolve => { //Promise for async execution
+    MongoClient.connect(CONNECTION_URL, { useNewUrlParser: true }, function (error, db) {
+      if(error) {
+        console.log("Error: " + error);
+      }
 
-app.listen(4000, function () {
+      /* ~~~ Might want to edit in the case that there are more than one class ~~~ */
+      var dbo = db.db("UHDatabase");
+      var classQuery = {name: "COSC 1300"};
 
-  const { Client, logger } = require('camunda-external-task-client-js');
-  const config = { baseUrl: 'http://localhost:8080/engine-rest', use: logger };
-
-  const client = new Client(config);
-  client.subscribe('monitor-students', async function({ task, taskService }) {
-    console.log("Triggered");
-    var p = new Promise(resolve => {
-      MongoClient.connect(CONNECTION_URL, { useNewUrlParser: true }, function (error, db) {
-        if(error) {
-          console.log("Error: " + error);
-        }
-
-        //Get studentIDs from class
-        var dbo = db.db("UHDatabase");
-        var studentIDs = [];
-        var classQuery = {name: "COSC 1300"};
-        var promise = new Promise (resolve => {
-          dbo.collection("classes").find(classQuery).toArray(function(err, result) {
-            if (err) throw err;
-            studentIDs = result[0].studentIDs;
-            //db.close();
-          });
-        }).then(function () {
-          //Review process for each student
-          for(var i = 0; i < studentIDs.length; i++) {
-            var studentQuery = {studentID: studentIDs[i]};
-            var promise = new Promise (function(resolve) {
-              dbo.collection("students").find(studentQuery).toArray(function(err, result) {
-                if (err) throw err;
-                //console.log(result[1]);
-                //console.log(result);
-                //Variables
-                var isFailing = false;
-                var gpa = "";
-                var attendance = "";
-                var name = result[0].name;
-                //Set gpa
-                if (result[0].gpa < 3.0) {
-                  gpa = name + " has a low gpa."
-                  isFailing = true;
-                } else {
-                  gpa = name + " has a great gpa!"
-                }
-
-                //Set attendance
-                if (result[0].attendance < 7) {
-                  attendance = name + " has missed too many classes";
-                  isFailing = true;
-                } else {
-                  attendance = name + " is doing great"
-                }
-
-                //Send post
-                if (isFailing) {
-                  var text = "{ \"" + name + "\": { \"gpa\" : { \"value\": \"" + gpa + "\" }, \"attendance\": { \"value\": \"" + attendance + "\"} } }";
-                  var obj = JSON.parse(text);
-                  jsonObj = obj;
-                  //console.log("Sent: " + gpa + " and " + attendance);
-                } else {
-                  //console.log("No report needed");
-                }
-                resolve();
-              }).catch((err) => {
-                console.log(err);
-              });
-            }).then(function () {
-              console.log(jsonObj);
-            });
-          }
-        });
-
-        //Search each student in class defined from classQuery
-        //console.log(studentIDs.length);
-        //console.log(studentIDs);
+      //Get studentIDs from class
+      dbo.collection("classes").find(classQuery).toArray(function(err, result) {
+        if (err) throw err;
+        studentIDs = result[0].studentIDs;
+        console.log("Acquiring Student IDs");
       });
-    }).then(function () {
-        console.log("**********Moving**************");
-        // Complete the task
-        //console.log(jsonObjs)
+
+      //Get all students information then resolve promise
+      dbo.collection("students").find({}).toArray(function(err,result) {
+        if (err) throw err;
+        students = result;
+        console.log("Acquiring Student Information")
+        resolve();
+      });
     });
-    await taskService.complete(task, jsonObjs);
+  }).then(function () {
+    console.log("Start reviewProcess for students");
+
+    //Start reviewProcess for students
+    for(var i = 0; i < students.length; i++) {
+      var review = reviewProcess(studentIDs[i], students);
+      if(review != -1) {
+        var index = searchStudents(studentIDs[i], students);
+        reviewObj[students[index].email] = review; //Create objects of the review process with student email as their keys and review report as value
+        reviews.push(reviewObj); //Append reviewObj to an array of reviews
+        reviewObj = {};
+      }
+    }
+  }).then(function () {
+    console.log("Begin Posting Review Reports to Next Task");
+    //Http POST each reviewObj in reviews to next task
+    for(var i = 0; i < reviews.length; i++) {
+      post(JSON.stringify(reviews[i]));
+    }
+    reviews = []; //Clear out reviews
+  }).then(function () {
+    //Mark task as complete
+    taskService.complete(task);
+  }).catch(function (error) {
+    //Handle any errors with promise
+    console.log(error);
   });
 });
 
-function reviewProcess (studentID, databaseRef) {
+//Match studentID in array of students, return index number
+function searchStudents (studentID, students) {
+  for(var i = 0; i < students.length; i++) {
+    if(students[i].studentID == studentID) {
+      //console.log(students[i].name);
+      return i;
+    }
+  }
+}
 
+//Review students based on gpa and attendance
+function reviewProcess (studentID, students) {
+  //Set variables
+  var index = searchStudents(studentID, students);
+  var isFailing = false;
+  var gpa = "";
+  var attendance = "";
+  var name = students[index].name;
+
+  //Set gpa report
+  if (students[index].gpa < 2.5) {
+    gpa = name + " is not fullfilling the course requirement of a 2.5 gpa. Currently has a gpa of " + students[index].gpa;
+    isFailing = true;
+  } else {
+    gpa = name + " is doing well with a gpa of " + students[index].gpa;
+  }
+
+  //Set attendance report
+  if (students[index].attendance < 7) {
+    attendance = name + " has missed too many classes";
+    isFailing = true;
+  } else {
+    attendance = name + " is doing great"
+  }
+
+  //Return final report if attendance or gpa is below requirements
+  if (isFailing) {
+    var report = gpa + "\n" + attendance;
+    return report;
+    //console.log("Sent: " + gpa + " and " + attendance);
+  } else {
+    //console.log("No report needed");
+    return -1;
+  }
+}
+
+function post(value) {
+  var request = require('request');
+  request.post(
+      'http://localhost:3000/',
+      { json: { key: value } },
+      function (error, response, body) {
+          if (!error && response.statusCode == 200) {
+              console.log(body)
+          }
+      }
+  );
+  // var http = require('http');
+  //
+  // var options = {
+  //   host: 'localhost',
+  //   path: '/',
+  //   port: '3000',
+  //   method: 'POST'
+  // };
+  //
+  // var req = http.request(options, function(response) {
+  //   var str = ''
+  //   response.on('data', function (chunk) {
+  //     str += chunk;
+  //   });
+  //
+  //   response.on('end', function () {
+  //     console.log(str);
+  //   });
+  // });
+  // //This is the data we are posting, it needs to be a string or a buffer
+  // var text = "This is text"
+  // req.write(text);
+  // req.end();
 }
 
 // //Create Collection for teachers and students
