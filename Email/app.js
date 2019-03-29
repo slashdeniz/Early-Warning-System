@@ -45,7 +45,7 @@ client.subscribe('send-email', async function({ task, taskService, report }) {
       from: 'slashdeniz911@gmail.com',
       to: key[0],
       subject: 'You have been flagged',
-      text: 'Recently you have been flagged as failing to meet standards of your class. Please visit the link below to set an appointment with your instructor: https://doodle.com/poll/r759mqcricrqabw3'
+      text: 'Recently you have been flagged as failing to meet standards of your class. Please visit the link below to set an appointment with your instructor: https://doodle.com/meetme/qc/4XLtfHNylk. '
       + reports[i][key[0]]
     };
     //Send email

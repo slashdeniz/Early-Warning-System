@@ -107,11 +107,11 @@ function reviewProcess (studentID, students) {
   }
 
   //Set attendance report
-  if (students[index].attendance < 7) {
-    attendance = name + " has missed too many classes";
+  if (students[index].attendance < 3) {
+    attendance = name + " has missed too many classes(" + (4-students[index].attendance) + "). Must attend atleast 3 out of the 4 past classes.";
     isFailing = true;
   } else {
-    attendance = name + " is doing great"
+    attendance = name + " is doing great attendance wise.";
   }
 
   //Return final report if attendance or gpa is below requirements
